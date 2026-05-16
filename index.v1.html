@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SpeedQuiz</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --sq-cyan: #00cfff;
+  --sq-cyan-dark: #0085a3;
+  --sq-text: #ffffff;
+  --sq-text-muted: rgba(255, 255, 255, 0.7);
+  --sq-bg: #000000;
+  --sq-btn-text: #000000;
+  --sq-wrong: #868686;
+  --sq-correct: #ffffff;
+  --sq-timer-track: rgba(255, 255, 255, 0.3);
+  --sq-number-display: rgba(16, 166, 199, 0.72);
+  --sq-number-btn: rgba(16, 166, 199, 0.8);
+  --sq-number-btn-dim: rgba(0, 164, 201, 0.52);
+  --sq-empty-slot: rgba(0, 120, 147, 0.5);
+  --sq-secondary: rgba(255, 255, 255, 0.14);
+}
+html, body {
+  height: 100%; width: 100%;
+  background: var(--sq-bg);
+  color: var(--sq-text);
+  font-family: Arial, sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+  gap: 4px;
+  height: 100vh;
+  height: 100dvh;
+}
+button {
+  border: none; outline: none; cursor: pointer;
+  font-family: Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* HUD */
+.hud {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+.hud-score, .hud-points {
+  font-size: 2rem;
+  font-weight: 500;
+  color: var(--sq-text);
+  min-width: 40px;
+  text-align: center;
+}
+.timer-track {
+  height: 30px;
+  border-radius: 5px;
+  background: var(--sq-timer-track);
+  overflow: hidden;
+  position: relative;
+}
+.timer-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: #ffffff;
+  width: 100%;
+  transition: width 0.1s linear, background 0.2s linear;
+}
+
+/* Question Panel */
+.question-panel {
+  min-height: 72px;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-align: center;
+}
+.question-text {
+  color: var(--sq-text);
+  font-size: clamp(1.1rem, 3.8vw, 1.3rem);
+  font-weight: 700;
+  transition: opacity 0.2s;
+}
+.question-text.dimmed { opacity: 0.5; }
+.feedback-text {
+  font-size: clamp(1.4rem, 3.3vw, 1.6rem);
+  color: var(--sq-text);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* Answer Panel */
+.answer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 4px;
+}
+
+/* Keypads */
+.keypad {
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  min-height: 0;
+}
+.keypad.multiple {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+}
+.keypad.letters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+}
+.keypad.numbers {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+}
+.keypad.sequence {
+  grid-template-columns: 1fr;
+}
+
+/* Common button base */
+.kbtn {
+  border-radius: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  color: var(--sq-btn-text);
+  background: var(--sq-cyan);
+  min-height: 0;
+}
+
+/* MC buttons */
+.kbtn.mc-btn {
+  font-size: clamp(1rem, 2.8vw, 1.24rem);
+  justify-content: center;
+  padding: 0 16px;
+  gap: 10px;
+}
+.kbtn.mc-btn .letter-prefix {
+  opacity: 0.5;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.kbtn.mc-btn .choice-text {
+  text-align: left;
+}
+.kbtn.empty-slot {
+  background: var(--sq-empty-slot);
+  color: rgba(255,255,255,0.3);
+  justify-content: flex-start;
+  padding: 0 16px;
+  font-size: clamp(1rem, 2.8vw, 1.24rem);
+  cursor: default;
+}
+
+/* Letter buttons */
+.kbtn.letter-btn {
+  font-size: 2.2rem;
+}
+
+/* Number buttons */
+.kbtn.num-btn {
+  font-size: 2.5rem;
+}
+.kbtn.num-fn {
+  font-size: 1.6rem;
+  background: var(--sq-number-btn);
+  color: var(--sq-text);
+}
+.kbtn.num-fn.dimmed-fn {
+  background: var(--sq-number-btn-dim);
+}
+.kbtn.num-fn.enter-glow {
+  box-shadow: inset 0 0 16px 2px rgba(255,255,255,0.5);
+}
+
+/* Number display */
+.number-display {
+  min-height: 84px;
+  border-radius: 12px;
+  background: var(--sq-number-display);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 20px;
+  color: var(--sq-text);
+  font-size: 2.5rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Sequence buttons */
+.kbtn.seq-btn {
+  font-size: clamp(1rem, 2.8vw, 1.24rem);
+  justify-content: center;
+  padding: 0 16px;
+  position: relative;
+}
+.kbtn.seq-btn .seq-order {
+  position: absolute;
+  right: 16px;
+  font-size: 2rem;
+  opacity: 0.5;
+  color: var(--sq-btn-text);
+}
+
+/* Feedback states */
+.kbtn.correct-state {
+  background: var(--sq-correct) !important;
+  color: var(--sq-btn-text) !important;
+}
+.kbtn.correct-state::before {
+  content: '✓';
+  position: absolute;
+  top: 4px; left: 8px;
+  font-size: 0.85rem;
+  color: green;
+  font-weight: 700;
+}
+.kbtn.wrong-state {
+  background: var(--sq-wrong) !important;
+  color: var(--sq-btn-text) !important;
+}
+.kbtn.wrong-state::before {
+  content: '✕';
+  position: absolute;
+  top: 4px; left: 8px;
+  font-size: 0.85rem;
+  color: red;
+  font-weight: 700;
+}
+.kbtn.dimmed-state {
+  background: var(--sq-cyan-dark) !important;
+  color: var(--sq-btn-text) !important;
+}
+
+/* Pulse animation for correct */
+@keyframes pulse-correct {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); box-shadow: 0 0 20px rgba(255,255,255,0.6); }
+  100% { transform: scale(1); }
+}
+.kbtn.pulse { animation: pulse-correct 0.4s ease; }
+
+/* Start & End screens */
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+}
+.screen-title {
+  font-size: clamp(1.6rem, 5vw, 2.2rem);
+  font-weight: 700;
+  color: var(--sq-text);
+  text-align: center;
+}
+.screen-subtitle {
+  font-size: 1rem;
+  color: var(--sq-text-muted);
+  text-align: center;
+}
+.screen-btn {
+  width: 100%;
+  max-width: 400px;
+  padding: 16px;
+  border-radius: 10px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--sq-cyan);
+  color: var(--sq-btn-text);
+}
+.btn-secondary {
+  background: var(--sq-secondary);
+  color: var(--sq-text);
+}
+
+/* Final score */
+.final-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  color: var(--sq-text-muted);
+}
+.final-score {
+  font-size: clamp(3.1rem, 20vw, 4.6rem);
+  font-weight: 700;
+  color: var(--sq-cyan);
+}
+.final-detail {
+  font-size: 1.1rem;
+  color: var(--sq-text-muted);
+}
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- HUD -->
+<div class="hud" id="hud">
+  <div class="hud-score" id="hud-score">0</div>
+  <div class="timer-track">
+    <div class="timer-fill" id="timer-fill"></div>
+  </div>
+  <div class="hud-points" id="hud-points">10</div>
+</div>
+
+<!-- Question Panel -->
+<div class="question-panel" id="question-panel">
+  <div class="question-text" id="question-text"></div>
+  <div class="feedback-text" id="feedback-text"></div>
+</div>
+
+<!-- Answer Panel -->
+<div class="answer-panel" id="answer-panel"></div>
+
+<script>
+(function() {
+  // State
+  let questions = [];
+  let currentIndex = 0;
+  let score = 0;
+  let timerInterval = null;
+  let timerStart = 0;
+  let timerDuration = 10000;
+  let answered = false;
+  let seqTaps = [];
+  let numberInput = '';
+
+  // DOM refs
+  const hud = document.getElementById('hud');
+  const hudScore = document.getElementById('hud-score');
+  const hudPoints = document.getElementById('hud-points');
+  const timerFill = document.getElementById('timer-fill');
+  const qPanel = document.getElementById('question-panel');
+  const qText = document.getElementById('question-text');
+  const fbText = document.getElementById('feedback-text');
+  const aPanel = document.getElementById('answer-panel');
+
+  // Shuffle array in place
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // Timer color based on percentage remaining
+  function timerColor(pct) {
+    if (pct > 0.5) return '#ffffff';
+    if (pct > 0.35) return '#f5e642';
+    if (pct > 0.2) return '#f5a623';
+    return '#ff3333';
+  }
+
+  // Calculate points
+  function calcPoints(pct) {
+    if (pct <= 0) return 0;
+    return Math.ceil(pct * 10);
+  }
+
+  // Start timer
+  function startTimer() {
+    timerStart = performance.now();
+    timerFill.style.transition = 'none';
+    timerFill.style.width = '100%';
+    timerFill.style.background = '#ffffff';
+    // force reflow
+    timerFill.offsetWidth;
+    timerFill.style.transition = 'width 0.1s linear, background 0.2s linear';
+
+    if (timerInterval) cancelAnimationFrame(timerInterval);
+    function tick() {
+      const elapsed = performance.now() - timerStart;
+      const pct = Math.max(0, 1 - elapsed / timerDuration);
+      timerFill.style.width = (pct * 100) + '%';
+      timerFill.style.background = timerColor(pct);
+      hudPoints.textContent = calcPoints(pct);
+      if (pct <= 0 && !answered) {
+        onTimeout();
+        return;
+      }
+      if (!answered) {
+        timerInterval = requestAnimationFrame(tick);
+      }
+    }
+    timerInterval = requestAnimationFrame(tick);
+  }
+
+  function stopTimer() {
+    if (timerInterval) cancelAnimationFrame(timerInterval);
+  }
+
+  function getTimeRemaining() {
+    const elapsed = performance.now() - timerStart;
+    return Math.max(0, 1 - elapsed / timerDuration);
+  }
+
+  // Letter keypad layout
+  const LETTER_LAYOUT = [
+    'A','B','C','D',
+    'E','F','G','H',
+    'I','J','K','L',
+    'M','N','O','P',
+    'R','S','T','U',
+    'QV','W','Y','XZ'
+  ];
+
+  // Show start screen
+  function showStart() {
+    hud.classList.add('hidden');
+    qPanel.classList.add('hidden');
+    aPanel.innerHTML = '';
+    const screen = document.createElement('div');
+    screen.className = 'screen';
+    screen.innerHTML = `
+      <div class="screen-title">The daily Speed Quiz</div>
+      <div class="screen-subtitle">${questions.length} random trivia questions.</div>
+      <button class="screen-btn btn-primary" id="btn-start">Start</button>
+      <button class="screen-btn btn-secondary" id="btn-howto">How to Play</button>
+    `;
+    aPanel.appendChild(screen);
+    document.getElementById('btn-start').addEventListener('click', startGame);
+    document.getElementById('btn-howto').addEventListener('click', () => {
+      alert('Answer each question as fast as you can! The faster you answer correctly, the more points you earn. You have 10 seconds per question.');
+    });
+  }
+
+  function startGame() {
+    shuffle(questions);
+    currentIndex = 0;
+    score = 0;
+    hudScore.textContent = '0';
+    hud.classList.remove('hidden');
+    qPanel.classList.remove('hidden');
+    showQuestion();
+  }
+
+  // Show question
+  function showQuestion() {
+    if (currentIndex >= questions.length) {
+      showFinal();
+      return;
+    }
+    answered = false;
+    seqTaps = [];
+    numberInput = '';
+    const q = questions[currentIndex];
+    qText.textContent = q.question;
+    qText.classList.remove('dimmed');
+    fbText.textContent = '';
+    hudPoints.textContent = '10';
+    aPanel.innerHTML = '';
+
+    switch (q.type) {
+      case 'multiple_choice': renderMC(q); break;
+      case 'letters': renderLetters(q); break;
+      case 'numbers': renderNumbers(q); break;
+      case 'sequence': renderSequence(q); break;
+    }
+    startTimer();
+  }
+
+  // --- Multiple Choice ---
+  function renderMC(q) {
+    const grid = document.createElement('div');
+    grid.className = 'keypad multiple';
+    const labels = ['A','B','C','D','E','F'];
+    for (let i = 0; i < 6; i++) {
+      if (i < 4) {
+        const btn = document.createElement('button');
+        btn.className = 'kbtn mc-btn';
+        btn.innerHTML = `<span class="letter-prefix">${labels[i]}</span><span class="choice-text">${q.options[i]}</span>`;
+        btn.dataset.value = q.options[i];
+        btn.dataset.index = i;
+        btn.addEventListener('click', () => onMCAnswer(btn, q, grid));
+        grid.appendChild(btn);
+      } else {
+        const slot = document.createElement('div');
+        slot.className = 'kbtn empty-slot';
+        slot.innerHTML = `<span class="letter-prefix">${labels[i]}</span>`;
+        grid.appendChild(slot);
+      }
+    }
+    aPanel.appendChild(grid);
+  }
+
+  function onMCAnswer(btn, q, grid) {
+    if (answered) return;
+    answered = true;
+    stopTimer();
+    const pct = getTimeRemaining();
+    const isCorrect = btn.dataset.value === q.answer;
+    const pts = isCorrect ? calcPoints(pct) : 0;
+    score += pts;
+    hudScore.textContent = score;
+
+    // Mark buttons
+    const btns = grid.querySelectorAll('.mc-btn');
+    btns.forEach(b => {
+      if (b.dataset.value === q.answer) {
+        b.classList.add('correct-state', 'pulse');
+      } else if (b === btn && !isCorrect) {
+        b.classList.add('wrong-state');
+      } else {
+        b.classList.add('dimmed-state');
+      }
+    });
+    showFeedback(isCorrect, q.answer, pts);
+  }
+
+  // --- Letters ---
+  function renderLetters(q) {
+    const grid = document.createElement('div');
+    grid.className = 'keypad letters';
+    LETTER_LAYOUT.forEach(lbl => {
+      const btn = document.createElement('button');
+      btn.className = 'kbtn letter-btn';
+      btn.textContent = lbl;
+      btn.dataset.value = lbl;
+      btn.addEventListener('click', () => onLetterAnswer(btn, q, grid));
+      grid.appendChild(btn);
+    });
+    aPanel.appendChild(grid);
+  }
+
+  function onLetterAnswer(btn, q, grid) {
+    if (answered) return;
+    answered = true;
+    stopTimer();
+    const pct = getTimeRemaining();
+    const selectedLetters = btn.dataset.value;
+    const isCorrect = selectedLetters.includes(q.answer);
+    const pts = isCorrect ? calcPoints(pct) : 0;
+    score += pts;
+    hudScore.textContent = score;
+
+    const btns = grid.querySelectorAll('.letter-btn');
+    btns.forEach(b => {
+      if (b.dataset.value.includes(q.answer)) {
+        b.classList.add('correct-state', 'pulse');
+      } else if (b === btn && !isCorrect) {
+        b.classList.add('wrong-state');
+      } else {
+        b.classList.add('dimmed-state');
+      }
+    });
+    const displayAnswer = q.display_answer || q.answer;
+    showFeedback(isCorrect, displayAnswer, pts);
+  }
+
+  // --- Numbers ---
+  function renderNumbers(q) {
+    const display = document.createElement('div');
+    display.className = 'number-display';
+    display.id = 'num-display';
+    aPanel.appendChild(display);
+
+    const grid = document.createElement('div');
+    grid.className = 'keypad numbers';
+    const keys = ['1','2','3','4','5','6','7','8','9','C','0','ENTER'];
+    keys.forEach(k => {
+      const btn = document.createElement('button');
+      if (k === 'C' || k === 'ENTER') {
+        btn.className = 'kbtn num-fn' + (k === 'ENTER' ? ' dimmed-fn' : '');
+        btn.textContent = k === 'ENTER' ? 'Enter' : k;
+        btn.id = k === 'ENTER' ? 'num-enter' : 'num-clear';
+      } else {
+        btn.className = 'kbtn num-btn';
+        btn.textContent = k;
+      }
+      btn.dataset.key = k;
+      btn.addEventListener('click', () => onNumberKey(k, q, grid));
+      grid.appendChild(btn);
+    });
+    aPanel.appendChild(grid);
+  }
+
+  function updateNumDisplay() {
+    const d = document.getElementById('num-display');
+    if (d) d.textContent = numberInput;
+    const enterBtn = document.getElementById('num-enter');
+    if (enterBtn) {
+      if (numberInput.length > 0) {
+        enterBtn.classList.remove('dimmed-fn');
+        enterBtn.classList.add('enter-glow');
+      } else {
+        enterBtn.classList.add('dimmed-fn');
+        enterBtn.classList.remove('enter-glow');
+      }
+    }
+  }
+
+  function onNumberKey(k, q, grid) {
+    if (answered) return;
+    if (k === 'C') {
+      numberInput = '';
+      updateNumDisplay();
+    } else if (k === 'ENTER') {
+      if (numberInput.length === 0) return;
+      answered = true;
+      stopTimer();
+      const pct = getTimeRemaining();
+      const isCorrect = parseInt(numberInput, 10) === q.answer;
+      const pts = isCorrect ? calcPoints(pct) : 0;
+      score += pts;
+      hudScore.textContent = score;
+
+      const display = document.getElementById('num-display');
+      if (isCorrect) {
+        display.style.background = 'rgba(255,255,255,0.9)';
+        display.style.color = '#000';
+      } else {
+        display.style.background = '#868686';
+        display.style.color = '#000';
+      }
+
+      // Dim all number buttons
+      grid.querySelectorAll('.kbtn').forEach(b => {
+        b.classList.add('dimmed-state');
+      });
+      showFeedback(isCorrect, String(q.answer), pts);
+    } else {
+      if (numberInput.length < 10) {
+        numberInput += k;
+        updateNumDisplay();
+      }
+    }
+  }
+
+  // --- Sequence ---
+  function renderSequence(q) {
+    const grid = document.createElement('div');
+    grid.className = 'keypad sequence';
+    const shuffledItems = shuffle([...q.items]);
+    grid.style.gridTemplateRows = `repeat(${shuffledItems.length}, minmax(0, 1fr))`;
+    shuffledItems.forEach((item, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'kbtn seq-btn';
+      btn.innerHTML = `<span class="choice-text">${item}</span>`;
+      btn.dataset.value = item;
+      btn.dataset.index = idx;
+      btn.addEventListener('click', () => onSeqTap(btn, q, grid));
+      grid.appendChild(btn);
+    });
+    aPanel.appendChild(grid);
+  }
+
+  function onSeqTap(btn, q, grid) {
+    if (answered) return;
+    if (btn.classList.contains('dimmed-state')) return;
+    seqTaps.push(btn.dataset.value);
+    btn.classList.add('dimmed-state');
+    const orderSpan = document.createElement('span');
+    orderSpan.className = 'seq-order';
+    orderSpan.textContent = seqTaps.length;
+    btn.appendChild(orderSpan);
+
+    // Check if all tapped
+    if (seqTaps.length === q.items.length) {
+      answered = true;
+      stopTimer();
+      const pct = getTimeRemaining();
+      const isCorrect = seqTaps.every((v, i) => v === q.answer[i]);
+      const pts = isCorrect ? calcPoints(pct) : 0;
+      score += pts;
+      hudScore.textContent = score;
+
+      // Highlight correct order
+      const btns = grid.querySelectorAll('.seq-btn');
+      if (isCorrect) {
+        btns.forEach(b => b.classList.add('correct-state', 'pulse'));
+      } else {
+        btns.forEach(b => {
+          b.classList.remove('dimmed-state');
+          b.classList.add('wrong-state');
+        });
+      }
+      const correctStr = q.answer.join(' → ');
+      showFeedback(isCorrect, correctStr, pts);
+    }
+  }
+
+  // Timeout
+  function onTimeout() {
+    if (answered) return;
+    answered = true;
+    stopTimer();
+    const q = questions[currentIndex];
+    let correctDisplay = '';
+    switch (q.type) {
+      case 'multiple_choice': correctDisplay = q.answer; highlightCorrectMC(q); break;
+      case 'letters': correctDisplay = q.display_answer || q.answer; highlightCorrectLetters(q); break;
+      case 'numbers': correctDisplay = String(q.answer); break;
+      case 'sequence': correctDisplay = q.answer.join(' → '); break;
+    }
+    showFeedback(false, correctDisplay, 0, true);
+  }
+
+  function highlightCorrectMC(q) {
+    const btns = aPanel.querySelectorAll('.mc-btn');
+    btns.forEach(b => {
+      if (b.dataset.value === q.answer) {
+        b.classList.add('correct-state', 'pulse');
+      } else {
+        b.classList.add('dimmed-state');
+      }
+    });
+  }
+
+  function highlightCorrectLetters(q) {
+    const btns = aPanel.querySelectorAll('.letter-btn');
+    btns.forEach(b => {
+      if (b.dataset.value.includes(q.answer)) {
+        b.classList.add('correct-state', 'pulse');
+      } else {
+        b.classList.add('dimmed-state');
+      }
+    });
+  }
+
+  // Feedback
+  function showFeedback(isCorrect, answer, pts, timeout) {
+    qText.classList.add('dimmed');
+    if (timeout) {
+      fbText.textContent = `Time's up! Answer: ${answer}`;
+      fbText.style.color = '#ff6b6b';
+    } else if (isCorrect) {
+      fbText.textContent = `Correct! +${pts}`;
+      fbText.style.color = '#00ff88';
+    } else {
+      fbText.textContent = `Wrong! Answer: ${answer}`;
+      fbText.style.color = '#ff6b6b';
+    }
+    setTimeout(() => {
+      currentIndex++;
+      showQuestion();
+    }, 2000);
+  }
+
+  // Final score screen
+  function showFinal() {
+    stopTimer();
+    hud.classList.add('hidden');
+    qPanel.classList.add('hidden');
+    aPanel.innerHTML = '';
+    const maxScore = questions.length * 10;
+    const screen = document.createElement('div');
+    screen.className = 'screen';
+    screen.innerHTML = `
+      <div class="final-label">Final Score</div>
+      <div class="final-score">${score}</div>
+      <div class="final-detail">You scored ${score} out of ${maxScore}</div>
+      <button class="screen-btn btn-primary" id="btn-share">Share results</button>
+      <button class="screen-btn btn-secondary" id="btn-replay">Replay</button>
+    `;
+    aPanel.appendChild(screen);
+    document.getElementById('btn-share').addEventListener('click', () => {
+      const text = `I scored ${score}/${maxScore} on SpeedQuiz! 🧠⚡`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!')).catch(() => {});
+      }
+      try { if (navigator.share) navigator.share({ text }).catch(() => {}); } catch(e) {}
+    });
+    document.getElementById('btn-replay').addEventListener('click', startGame);
+  }
+
+  // Init - try fetch first, fallback to embedded data
+  function init(data) {
+    questions = data;
+    showStart();
+  }
+  if (window.QUIZ_QUESTIONS) {
+    init(window.QUIZ_QUESTIONS);
+  } else {
+    fetch('questions.json')
+      .then(r => r.json())
+      .then(init)
+      .catch(err => {
+        aPanel.innerHTML = `<div class="screen"><div class="screen-title">Error loading questions</div><div class="screen-subtitle">${err.message}<br><br>Make sure questions.json is in the same folder and you're serving via a web server (not file://).</div></div>`;
+      });
+  }
+})();
+</script>
+</body>
+</html>
