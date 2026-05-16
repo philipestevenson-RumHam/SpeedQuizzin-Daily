@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpeedQuiz Question Converter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #111; color: #eee; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+  .container { max-width: 600px; width: 100%; }
+  h1 { color: #00cfff; margin-bottom: 8px; font-size: 24px; }
+  p.sub { color: #888; margin-bottom: 30px; font-size: 14px; }
+  .drop-zone { border: 2px dashed #00cfff55; border-radius: 12px; padding: 50px 20px; text-align: center; cursor: pointer; transition: all .2s; background: #1a1a1a; margin-bottom: 20px; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #00cfff; background: #0a2a30; }
+  .drop-zone .icon { font-size: 48px; margin-bottom: 12px; }
+  .drop-zone .label { color: #aaa; font-size: 15px; }
+  .drop-zone .label strong { color: #00cfff; }
+  .drop-zone .file-name { color: #00cfff; font-size: 16px; margin-top: 10px; font-weight: 600; }
+  input[type="file"] { display: none; }
+  .btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .btn-primary { background: #00cfff; color: #000; margin-bottom: 10px; }
+  .btn-primary:hover { background: #00e5ff; }
+  .btn-primary:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .btn-secondary { background: #222; color: #00cfff; border: 1px solid #00cfff33; }
+  .btn-secondary:hover { background: #1a2a30; }
+  .preview { background: #1a1a1a; border-radius: 8px; padding: 16px; margin: 20px 0; max-height: 300px; overflow-y: auto; font-size: 13px; font-family: 'SF Mono', Monaco, monospace; white-space: pre-wrap; color: #aaa; border: 1px solid #333; }
+  .stats { display: flex; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
+  .stat { background: #1a1a1a; border-radius: 8px; padding: 10px 16px; border: 1px solid #333; flex: 1; min-width: 100px; text-align: center; }
+  .stat .num { font-size: 24px; font-weight: 700; color: #00cfff; }
+  .stat .lbl { font-size: 11px; color: #888; text-transform: uppercase; margin-top: 2px; }
+  .error { background: #3a1515; border: 1px solid #ff4444; color: #ff8888; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 14px; }
+  .success { background: #153a15; border: 1px solid #44ff44; color: #88ff88; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚡ SpeedQuiz Converter</h1>
+  <p class="sub">Convert your Excel question template to questions.json</p>
+
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">📄</div>
+    <div class="label">Drop your <strong>.xlsx</strong> file here or click to browse</div>
+    <div class="file-name" id="fileName" style="display:none"></div>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+
+  <div id="statsArea" style="display:none">
+    <div class="stats">
+      <div class="stat"><div class="num" id="totalCount">0</div><div class="lbl">Total</div></div>
+      <div class="stat"><div class="num" id="mcCount">0</div><div class="lbl">MC</div></div>
+      <div class="stat"><div class="num" id="lettersCount">0</div><div class="lbl">Letters</div></div>
+      <div class="stat"><div class="num" id="numbersCount">0</div><div class="lbl">Numbers</div></div>
+      <div class="stat"><div class="num" id="seqCount">0</div><div class="lbl">Sequence</div></div>
+    </div>
+  </div>
+
+  <div id="msgArea"></div>
+
+  <button class="btn btn-primary" id="convertBtn" disabled>Convert & Download JSON</button>
+
+  <div id="previewArea" style="display:none">
+    <div class="preview" id="jsonPreview"></div>
+    <button class="btn btn-secondary" id="copyBtn">📋 Copy JSON to Clipboard</button>
+  </div>
+</div>
+
+<script>
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const convertBtn = document.getElementById('convertBtn');
+  const msgArea = document.getElementById('msgArea');
+  let parsedQuestions = null;
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+  function handleFile(file) {
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileName').style.display = 'block';
+    msgArea.innerHTML = '';
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        // Find the Questions sheet (or use first sheet)
+        let sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'questions') || wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+
+        if (!rows.length) { showMsg('error', 'No data rows found in the sheet.'); return; }
+
+        parsedQuestions = [];
+        const errors = [];
+
+        rows.forEach((row, i) => {
+          const rowNum = i + 2;
+          const type = (row.type || '').toString().trim().toLowerCase();
+          const question = (row.question || '').toString().trim();
+          const answer = row.answer;
+
+          if (!type || !question) { errors.push(`Row ${rowNum}: missing type or question`); return; }
+
+          if (type === 'multiple_choice') {
+            const opts = [row.option1, row.option2, row.option3, row.option4]
+              .map(o => (o || '').toString().trim()).filter(Boolean);
+            if (opts.length < 2) { errors.push(`Row ${rowNum}: MC needs at least 2 options`); return; }
+            if (!answer) { errors.push(`Row ${rowNum}: MC missing answer`); return; }
+            parsedQuestions.push({ type: 'multiple_choice', question, options: opts, answer: answer.toString().trim() });
+
+          } else if (type === 'letters') {
+            const a = (answer || '').toString().trim().toUpperCase();
+            if (!a || a.length !== 1) { errors.push(`Row ${rowNum}: letters answer must be a single letter`); return; }
+            const obj = { type: 'letters', question, answer: a };
+            const da = (row.display_answer || '').toString().trim();
+            if (da) obj.display_answer = da;
+            parsedQuestions.push(obj);
+
+          } else if (type === 'numbers') {
+            const n = Number(answer);
+            if (isNaN(n)) { errors.push(`Row ${rowNum}: numbers answer must be a number`); return; }
+            parsedQuestions.push({ type: 'numbers', question, answer: n });
+
+          } else if (type === 'sequence') {
+            const items = [];
+            for (let s = 1; s <= 6; s++) {
+              const v = (row[`seq_item${s}`] || '').toString().trim();
+              if (v) items.push(v);
+            }
+            if (items.length < 2) { errors.push(`Row ${rowNum}: sequence needs at least 2 items`); return; }
+            parsedQuestions.push({ type: 'sequence', question, items, answer: [...items] });
+
+          } else {
+            errors.push(`Row ${rowNum}: unknown type "${type}"`);
+          }
+        });
+
+        if (errors.length) {
+          showMsg('error', '⚠️ Warnings:\n' + errors.join('\n'));
+        }
+
+        if (parsedQuestions.length) {
+          convertBtn.disabled = false;
+          const counts = { multiple_choice: 0, letters: 0, numbers: 0, sequence: 0 };
+          parsedQuestions.forEach(q => counts[q.type]++);
+          document.getElementById('statsArea').style.display = 'block';
+          document.getElementById('totalCount').textContent = parsedQuestions.length;
+          document.getElementById('mcCount').textContent = counts.multiple_choice;
+          document.getElementById('lettersCount').textContent = counts.letters;
+          document.getElementById('numbersCount').textContent = counts.numbers;
+          document.getElementById('seqCount').textContent = counts.sequence;
+
+          if (!errors.length) showMsg('success', `✅ ${parsedQuestions.length} questions parsed successfully!`);
+        } else {
+          convertBtn.disabled = true;
+          if (!errors.length) showMsg('error', 'No valid questions found.');
+        }
+      } catch (err) {
+        showMsg('error', 'Failed to parse file: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  convertBtn.addEventListener('click', () => {
+    if (!parsedQuestions) return;
+    const json = JSON.stringify(parsedQuestions, null, 2);
+
+    // Download
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'questions.json'; a.click();
+    URL.revokeObjectURL(url);
+
+    // Preview
+    document.getElementById('previewArea').style.display = 'block';
+    document.getElementById('jsonPreview').textContent = json;
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    const json = document.getElementById('jsonPreview').textContent;
+    navigator.clipboard.writeText(json).then(() => {
+      document.getElementById('copyBtn').textContent = '✅ Copied!';
+      setTimeout(() => document.getElementById('copyBtn').textContent = '📋 Copy JSON to Clipboard', 2000);
+    }).catch(() => {});
+  });
+
+  function showMsg(type, text) {
+    msgArea.innerHTML = `<div class="${type}">${text.replace(/\n/g, '<br>')}</div>`;
+  }
+</script>
+</body>
+</html>

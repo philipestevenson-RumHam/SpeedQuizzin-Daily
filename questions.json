@@ -1,0 +1,57 @@
+[
+  {
+    "type": "multiple_choice",
+    "question": "What is the capital of France?",
+    "options": [
+      "London",
+      "Paris",
+      "Berlin",
+      "Madrid"
+    ],
+    "answer": "Paris"
+  },
+  {
+    "type": "letters",
+    "question": "First letter of the longest river in Africa?",
+    "answer": "N",
+    "display_answer": "Nile"
+  },
+  {
+    "type": "numbers",
+    "question": "How many days in a leap year?",
+    "answer": 366
+  },
+  {
+    "type": "sequence",
+    "question": "Order these planets from the Sun:",
+    "items": [
+      "Mercury",
+      "Venus",
+      "Earth",
+      "Mars"
+    ],
+    "answer": [
+      "Mercury",
+      "Venus",
+      "Earth",
+      "Mars"
+    ]
+  },
+  {
+    "type": "multiple_choice",
+    "question": "Who painted the Mona Lisa?",
+    "options": [
+      "Michelangelo",
+      "Leonardo da Vinci",
+      "Raphael",
+      "Donatello"
+    ],
+    "answer": "Leonardo da Vinci"
+  },
+  {
+    "type": "letters",
+    "question": "First letter of the largest ocean?",
+    "answer": "P",
+    "display_answer": "Pacific"
+  }
+]
