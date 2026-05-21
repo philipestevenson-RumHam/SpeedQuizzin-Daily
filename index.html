@@ -338,6 +338,35 @@ button {
 .hidden { display: none !important; }
 
 
+
+    /* Name input */
+    .name-input-wrap { width: 100%; margin-bottom: 12px; }
+    .name-input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 1.1rem;
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 500;
+      border: 2px solid rgba(212,168,67,0.4);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+    }
+    .name-input::placeholder { color: rgba(255,255,255,0.35); }
+    .name-input:focus { border-color: #d4a843; }
+    .name-input.shake {
+      animation: shake 0.4s ease;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
     /* Toast notification */
     .toast {
       position: fixed;
@@ -523,6 +552,7 @@ button {
   let questions = [];
   let currentIndex = 0;
   let score = 0;
+  let playerName = '';
   let timerInterval = null;
   let timerStart = 0;
   let timerDuration = 10000;
@@ -620,13 +650,30 @@ button {
     screen.innerHTML = `
       <div class="screen-title">The daily Speed Quiz</div>
       <div class="screen-subtitle">${questions.length} random trivia questions.</div>
+      <div class="name-input-wrap">
+        <input type="text" class="name-input" id="name-input" placeholder="Enter your name" maxlength="30" value="${playerName || ''}">
+      </div>
       <button class="screen-btn btn-primary" id="btn-start">Start</button>
       <button class="screen-btn btn-secondary" id="btn-howto">How to Play</button>
     `;
     aPanel.appendChild(screen);
-    document.getElementById('btn-start').addEventListener('click', startGame);
+    const nameInput = document.getElementById('name-input');
+    document.getElementById('btn-start').addEventListener('click', () => {
+      const name = nameInput.value.trim();
+      if (!name) {
+        nameInput.classList.add('shake');
+        nameInput.focus();
+        setTimeout(() => nameInput.classList.remove('shake'), 400);
+        return;
+      }
+      playerName = name;
+      startGame();
+    });
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('btn-start').click();
+    });
     document.getElementById('btn-howto').addEventListener('click', () => {
-      openHowToPlay();
+      window.openHowToPlay();
     });
   }
 
@@ -1016,14 +1063,14 @@ button {
     `;
     aPanel.appendChild(screen);
     document.getElementById('btn-share').addEventListener('click', () => {
-      const text = `I scored ${score}/${maxScore} on SpeedQuiz! 🧠⚡`;
+      const text = `${playerName} scored ${score}/${maxScore} on SpeedQuiz! 🧠⚡`;
       if (navigator.share) {
         navigator.share({ text }).catch(() => copyAndToast(text));
       } else {
         copyAndToast(text);
       }
     });
-    document.getElementById('btn-replay').addEventListener('click', startGame);
+    document.getElementById('btn-replay').addEventListener('click', showStart);
   }
 
   // Init - try fetch first, fallback to embedded data
