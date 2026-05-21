@@ -337,6 +337,29 @@ button {
 
 .hidden { display: none !important; }
 
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #d4a843;
+      color: #1a1a2e;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 9999;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
     /* How to Play Panel */
     .how-to-play-panel {
       position: fixed;
@@ -603,7 +626,7 @@ button {
     aPanel.appendChild(screen);
     document.getElementById('btn-start').addEventListener('click', startGame);
     document.getElementById('btn-howto').addEventListener('click', () => {
-      alert('Answer each question as fast as you can! The faster you answer correctly, the more points you earn. You have 10 seconds per question.');
+      openHowToPlay();
     });
   }
 
@@ -994,10 +1017,11 @@ button {
     aPanel.appendChild(screen);
     document.getElementById('btn-share').addEventListener('click', () => {
       const text = `I scored ${score}/${maxScore} on SpeedQuiz! 🧠⚡`;
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!')).catch(() => {});
+      if (navigator.share) {
+        navigator.share({ text }).catch(() => copyAndToast(text));
+      } else {
+        copyAndToast(text);
       }
-      try { if (navigator.share) navigator.share({ text }).catch(() => {}); } catch(e) {}
     });
     document.getElementById('btn-replay').addEventListener('click', startGame);
   }
@@ -1019,5 +1043,120 @@ button {
   }
 })();
 </script>
+
+  <!-- How to Play Modal -->
+  <div class="how-to-play-panel" id="htpModal" hidden>
+    <div class="how-to-play-card">
+      <div class="how-to-play-card-header">
+        <button class="how-to-play-close" id="htpClose">&times;</button>
+        <div class="how-to-play-title">How to Play</div>
+      </div>
+      <div class="how-to-play-content" id="htpContent"></div>
+      <div class="how-to-play-footer">
+        <div class="how-to-play-dots" id="htpDots"></div>
+        <button class="how-to-play-next-btn" id="htpNext">Next</button>
+      </div>
+    </div>
+  </div>
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (function() {
+    const slides = [
+      {
+        heading: 'Welcome to SpeedQuiz!',
+        text: 'Answer each question as fast as you can. The quicker you answer correctly, the more points you earn!',
+        list: ['10 questions per quiz', 'Up to 10 points per question', '10 second timer per question', 'Timer starts after the question is fully revealed']
+      },
+      {
+        heading: 'Multiple Choice',
+        text: 'Pick the correct answer from up to 4 options.',
+        list: ['Tap the answer you think is correct', 'Green = correct, Red = wrong', 'Faster answers score more points']
+      },
+      {
+        heading: 'Letters',
+        text: 'Spell out your answer using the letter grid.',
+        list: ['Tap letters A–Z to build your answer', 'Use ⌫ to delete the last letter', 'Submit when you're happy with your answer', 'Q/V and X/Z share buttons']
+      },
+      {
+        heading: 'Numbers',
+        text: 'Choose the correct number from the options shown.',
+        list: ['Number questions show numeric options', 'Pick the one you think is right', 'Same scoring — speed counts!']
+      },
+      {
+        heading: 'Sequence',
+        text: 'Tap the items in the correct order.',
+        list: ['Items appear in a random order', 'Tap them in the correct sequence (1st, 2nd, 3rd…)', 'Each correct tap highlights green', 'Get them all right to score points']
+      }
+    ];
+
+    let currentSlide = 0;
+    const modal = document.getElementById('htpModal');
+    const content = document.getElementById('htpContent');
+    const dots = document.getElementById('htpDots');
+    const nextBtn = document.getElementById('htpNext');
+    const closeBtn = document.getElementById('htpClose');
+
+    function renderSlide() {
+      const s = slides[currentSlide];
+      let listHtml = '';
+      if (s.list) {
+        listHtml = '<ul class="how-to-play-list">' + s.list.map(li => '<li>' + li + '</li>').join('') + '</ul>';
+      }
+      content.innerHTML = '<h3 class="how-to-play-slide-heading">' + s.heading + '</h3>' +
+        '<p class="how-to-play-slide-text">' + s.text + '</p>' + listHtml;
+      
+      dots.innerHTML = '';
+      slides.forEach((_, i) => {
+        const dot = document.createElement('span');
+        dot.className = 'how-to-play-dot' + (i === currentSlide ? ' active' : '');
+        dot.addEventListener('click', () => { currentSlide = i; renderSlide(); });
+        dots.appendChild(dot);
+      });
+      nextBtn.textContent = currentSlide === slides.length - 1 ? 'Got it!' : 'Next';
+    }
+
+    window.openHowToPlay = function() {
+      currentSlide = 0;
+      renderSlide();
+      modal.hidden = false;
+      requestAnimationFrame(() => modal.classList.add('is-open'));
+    };
+
+    function closeModal() {
+      modal.classList.remove('is-open');
+      setTimeout(() => { modal.hidden = true; }, 300);
+    }
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    nextBtn.addEventListener('click', () => {
+      if (currentSlide < slides.length - 1) {
+        currentSlide++;
+        renderSlide();
+      } else {
+        closeModal();
+      }
+    });
+
+    // Toast helper
+    window.copyAndToast = function(text) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!')).catch(() => showToast('Could not copy'));
+      } else {
+        showToast('Sharing not available');
+      }
+    };
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+  })();
+  </script>
+
 </body>
 </html>
