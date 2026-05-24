@@ -525,7 +525,6 @@ button {
     }
 
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -549,44 +548,6 @@ button {
 
 <script>
 (function() {
-  // ── Supabase config ──
-  const SUPABASE_URL = 'https://zpwfoxypnfzlmjftlcsh.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpwd2ZveHlwbmZ6bG1qZnRsY3NoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NjMzODEsImV4cCI6MjA5NDQzOTM4MX0.QIdwTkuKO0bw3e8DOXzG79129GAUQ3EbrZgrY6x6XA8';
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  function todayDate() {
-    const d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-  }
-
-  // Find or create player by name (case-insensitive match)
-  async function getOrCreatePlayer(name) {
-    const { data: existing } = await sb.from('players').select('*').ilike('name', name);
-    if (existing && existing.length > 0) return existing[0];
-    const colors = ['#6366f1','#ec4899','#f59e0b','#22c55e','#14b8a6','#f97316','#8b5cf6','#06b6d4','#84cc16','#ef4444'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    const { data: newPlayer, error } = await sb.from('players').insert({ name, color }).select().single();
-    if (error) throw new Error('Could not create player: ' + error.message);
-    return newPlayer;
-  }
-
-  // Check if player already has a score for today
-  async function checkExistingScore(playerId) {
-    const { data } = await sb.from('scores').select('score').eq('player_id', playerId).eq('date', todayDate());
-    return (data && data.length > 0) ? data[0] : null;
-  }
-
-  // Save score to Supabase (insert only — will fail if duplicate)
-  async function saveQuizScore(playerId, scoreVal) {
-    const { error } = await sb.from('scores').insert({ player_id: playerId, date: todayDate(), score: scoreVal });
-    if (error) {
-      if (error.code === '23505') throw new Error('DUPLICATE');
-      throw new Error('Error saving score: ' + error.message);
-    }
-  }
-
-  let currentPlayerId = null;
-
   // State
   let questions = [];
   let currentIndex = 0;
@@ -693,12 +654,11 @@ button {
         <input type="text" class="name-input" id="name-input" placeholder="Enter your name" maxlength="30" value="${playerName || ''}">
       </div>
       <button class="screen-btn btn-primary" id="btn-start">Start</button>
-      <a href="LEADERBOARD_URL_HERE" target="_blank" class="screen-btn btn-secondary" id="btn-leaderboard" style="text-decoration:none;text-align:center;display:block;">Leaderboard</a>
       <button class="screen-btn btn-secondary" id="btn-howto">How to Play</button>
     `;
     aPanel.appendChild(screen);
     const nameInput = document.getElementById('name-input');
-    document.getElementById('btn-start').addEventListener('click', async () => {
+    document.getElementById('btn-start').addEventListener('click', () => {
       const name = nameInput.value.trim();
       if (!name) {
         nameInput.classList.add('shake');
@@ -706,28 +666,8 @@ button {
         setTimeout(() => nameInput.classList.remove('shake'), 400);
         return;
       }
-      const btn = document.getElementById('btn-start');
-      btn.disabled = true;
-      btn.textContent = 'Checking...';
-      try {
-        const player = await getOrCreatePlayer(name);
-        currentPlayerId = player.id;
-        const existing = await checkExistingScore(player.id);
-        if (existing) {
-          btn.disabled = false;
-          btn.textContent = 'Start Quiz';
-          showAlreadyPlayed(name, existing.score);
-          return;
-        }
-        playerName = name;
-        btn.disabled = false;
-        btn.textContent = 'Start Quiz';
-        startGame();
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = 'Start Quiz';
-        showToast('Error: ' + err.message, true);
-      }
+      playerName = name;
+      startGame();
     });
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') document.getElementById('btn-start').click();
@@ -1106,64 +1046,18 @@ button {
   }
 
   // Final score screen
-  // Show "already played" screen
-  function showAlreadyPlayed(name, previousScore) {
-    hud.classList.add('hidden');
-    qPanel.classList.add('hidden');
-    aPanel.innerHTML = '';
-    const maxScore = questions.length * 10;
-    const screen = document.createElement('div');
-    screen.className = 'screen';
-    screen.innerHTML = `
-      <div class="final-label">Already Played Today!</div>
-      <div class="final-score">${previousScore}</div>
-      <div class="final-detail">${name}, you already completed today\\u2019s quiz and scored ${previousScore} out of ${maxScore}.</div>
-      <div style="margin-top:0.8rem;font-size:0.85rem;color:var(--text-dim,#999);">Come back tomorrow for a new quiz!</div>
-      <button class="screen-btn btn-primary" id="btn-share-prev">Share results</button>
-    `;
-    aPanel.appendChild(screen);
-    document.getElementById('btn-share-prev').addEventListener('click', () => {
-      const text = `${name} scored ${previousScore}/${maxScore} on SpeedQuiz! 🧠⚡`;
-      if (navigator.share) {
-        navigator.share({ text }).catch(() => copyAndToast(text));
-      } else {
-        copyAndToast(text);
-      }
-    });
-  }
-
-  async function showFinal() {
+  function showFinal() {
     stopTimer();
     hud.classList.add('hidden');
     qPanel.classList.add('hidden');
     aPanel.innerHTML = '';
     const maxScore = questions.length * 10;
-
-    // Save score to Supabase
-    let saveStatus = '';
-    if (currentPlayerId) {
-      try {
-        await saveQuizScore(currentPlayerId, score);
-        saveStatus = 'saved';
-      } catch (err) {
-        if (err.message === 'DUPLICATE') {
-          saveStatus = 'duplicate';
-        } else {
-          saveStatus = 'error';
-          console.error('Score save error:', err);
-        }
-      }
-    }
-
     const screen = document.createElement('div');
     screen.className = 'screen';
     screen.innerHTML = `
       <div class="final-label">Final Score</div>
       <div class="final-score">${score}</div>
       <div class="final-detail">You scored ${score} out of ${maxScore}</div>
-      ${saveStatus === 'saved' ? '<div style="margin-top:0.5rem;font-size:0.8rem;color:#22c55e;font-weight:600;">✅ Score recorded!</div>' : ''}
-      ${saveStatus === 'duplicate' ? '<div style="margin-top:0.5rem;font-size:0.8rem;color:#f59e0b;font-weight:600;">⚠️ Score already recorded for today</div>' : ''}
-      ${saveStatus === 'error' ? '<div style="margin-top:0.5rem;font-size:0.8rem;color:#ef4444;font-weight:600;">⚠️ Could not save score — check your connection</div>' : ''}
       <button class="screen-btn btn-primary" id="btn-share">Share results</button>
       <button class="screen-btn btn-secondary" id="btn-replay">Replay</button>
     `;
@@ -1270,13 +1164,11 @@ button {
     }
   }
 
-  function showToast(msg, isError) {
+  function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
-    if (isError) t.style.background = '#ef4444';
-    else t.style.background = '';
     t.classList.add('show');
-    setTimeout(() => { t.classList.remove('show'); t.style.background = ''; }, 2500);
+    setTimeout(() => t.classList.remove('show'), 2500);
   }
 
   if (window.QUIZ_QUESTIONS) {
